@@ -52,10 +52,8 @@ async def update_token():
         app.token_got = datetime.now()
 
 
-async def rarbg_rss(request):
-    params = dict(request.GET)
+async def api(params):
     print(params)
-
     await update_token()
     params.update(token=app.token, format='json_extended')
 
@@ -77,7 +75,21 @@ async def rarbg_rss(request):
     return web.Response(text=result)
 
 
+async def rarbg_rss(request):
+    params = dict(request.GET)
+    if 'string' in request.match_info:
+        params.update(mode='search', search_string=request.match_info['string'])
+    if 'imdb' in request.match_info:
+        params.update(mode='search', search_imdb=request.match_info['imdb'])
+    if 'tvdb' in request.match_info:
+        params.update(mode='search', search_tvdb=request.match_info['tvdb'])
+    return await api(params)
+
+
 app.router.add_route('GET', '/', rarbg_rss)
+app.router.add_route('GET', '/search/{string}', rarbg_rss)
+app.router.add_route('GET', '/imdb/{imdb}', rarbg_rss)
+app.router.add_route('GET', '/tvdb/{tvdb}', rarbg_rss)
 
 
 def main():
