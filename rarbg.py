@@ -4,18 +4,39 @@
 import asyncio
 
 from datetime import datetime, timedelta
-from dateutil import parser
 from email.utils import formatdate
 from urllib.parse import parse_qs
 
 from aiohttp import get, web
+from dateutil import parser
 from humanize import naturalsize
 from jinja2 import Template
 
-
 API_ENDPOINT = 'https://torrentapi.org/pubapi_v2.php'
-TEMPLATE = Template(open('feed.xml').read())
 TOKEN_LIFESPAN = timedelta(minutes=15)
+
+TEMPLATE = Template('''
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+    <channel>
+        <title>{{title}}</title>
+        <link>https://torrentapi.org/apidocs_v2.txt</link>
+        <ttl>3600</ttl>
+        {% for entry in entries %}
+        <item>
+            <title>{{entry.title}} ({{entry.hsize}})</title>
+            <description/>
+            <guid>{{entry.hash}}</guid>
+            <pubDate>{{entry.pubdate}}</pubDate>
+            <enclosure
+                url="{{entry.download}}"
+                length="{{entry.size}}"
+                type="application/x-bittorrent" />
+        </item>
+        {% endfor %}
+    </channel>
+</rss>
+''')
 
 app = web.Application()
 app.token = None
@@ -59,10 +80,14 @@ async def rarbg_rss(request):
 app.router.add_route('GET', '/', rarbg_rss)
 
 
-if __name__ == '__main__':
+def main():
     loop = asyncio.get_event_loop()
     handler = app.make_handler()
     f = loop.create_server(handler, '0.0.0.0', 8080)
     srv = loop.run_until_complete(f)
     print('serving on', srv.sockets[0].getsockname())
     loop.run_forever()
+
+
+if __name__ == '__main__':
+    main()
