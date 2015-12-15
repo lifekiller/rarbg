@@ -42,15 +42,26 @@ TEMPLATE = Template('''
 app = web.Application()
 app.token = None
 app.token_got = datetime.now()
-app.next_call = datetime.now()
 
 
-async def rate_limited_get(*args, **kwds):
-    now = datetime.now()
-    app.next_call = max(app.next_call, now) + API_RATE_LIMIT
-    sleep = app.next_call - now - API_RATE_LIMIT
-    await asyncio.sleep(sleep.total_seconds())
-    return (await get(*args, **kwds))
+class RateLimit:
+
+    def __init__(self, rate_limit):
+        self.rate_limit = rate_limit
+        self.next_call = datetime.now()
+
+    async def __aenter__(self):
+        now = datetime.now()
+        self.next_call = max(now, self.next_call) + self.rate_limit
+        sleep = self.next_call - now - self.rate_limit
+        print('sleep', str(sleep))
+        await asyncio.sleep(sleep.total_seconds())
+
+    async def __aexit__(self, exc_type, exc, tb):
+        pass
+
+
+api_rate_limit = RateLimit(API_RATE_LIMIT)
 
 
 async def update_token():
@@ -63,15 +74,16 @@ async def update_token():
 
 
 async def api(params):
-    print(params)
+    print('request', params)
     await update_token()
     params.update(token=app.token, format='json_extended')
 
-    resp = await rate_limited_get(API_ENDPOINT, params=params)
-    data = await resp.json()
+    async with api_rate_limit:
+        resp = await get(API_ENDPOINT, params=params)
+        data = await resp.json()
 
     if 'error' in data:
-        print('! too many requests')
+        print('too many requests')
         return web.HTTPServiceUnavailable(text=data['error'])
 
     for i in data['torrent_results']:
@@ -80,6 +92,8 @@ async def api(params):
             hsize=naturalsize(i['size'], gnu=True),
             hash=parse_qs(i['download'])['magnet:?xt'][0].split(':')[-1],
         )
+
+    print('response', params)
 
     result = TEMPLATE.render(title='rarbg', entries=data['torrent_results'])
     return web.Response(text=result)
