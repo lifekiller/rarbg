@@ -13,6 +13,7 @@ from humanize import naturalsize
 from jinja2 import Template
 
 API_ENDPOINT = 'https://torrentapi.org/pubapi_v2.php'
+API_RATE_LIMIT = timedelta(seconds=2)
 TOKEN_LIFESPAN = timedelta(minutes=15)
 
 TEMPLATE = Template('''
@@ -41,6 +42,15 @@ TEMPLATE = Template('''
 app = web.Application()
 app.token = None
 app.token_got = datetime.now()
+app.next_call = datetime.now()
+
+
+async def rate_limited_get(*args, **kwds):
+    now = datetime.now()
+    app.next_call = max(app.next_call, now) + API_RATE_LIMIT
+    sleep = app.next_call - now - API_RATE_LIMIT
+    await asyncio.sleep(sleep.total_seconds())
+    return (await get(*args, **kwds))
 
 
 async def update_token():
@@ -57,7 +67,7 @@ async def api(params):
     await update_token()
     params.update(token=app.token, format='json_extended')
 
-    resp = await get(API_ENDPOINT, params=params)
+    resp = await rate_limited_get(API_ENDPOINT, params=params)
     data = await resp.json()
 
     if 'error' in data:
