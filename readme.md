@@ -1,12 +1,24 @@
 # rarbg → rss
 
-Adapter for [Torrent API](https://torrentapi.org/apidocs_v2.txt) that serves search results as broadcatching-ready RSS feed.
+Adapter for Torrent API ([see docs](https://torrentapi.org/apidocs_v2.txt)) that serves search results as broadcatching-ready RSS feed.
+
+# Installation
+
+Requires Python 3.5 or later.
+
+```
+pip install git+https://github.com/banteg/rarbg
+```
 
 ## Usage
 
-`/` main endpoint, pass parameters as you would pass them to API. 
+Run the server by typing `rarbg`.
 
-Note that API has rate limit of one request per two seconds.
+Access it by passing parameters to `http://localhost:8080/` as you would pass them to Torrent API. 
+
+Note that Torrent API has a rate limit of one request per two seconds. 
+
+Token updates and rate limits are handled automatically.
 
 ### Convenience methods
 
