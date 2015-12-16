@@ -2,7 +2,7 @@
 
 Adapter for Torrent API ([see docs](https://torrentapi.org/apidocs_v2.txt)) that serves search results as broadcatching-ready RSS feed.
 
-# Installation
+## Installation
 
 Requires Python 3.5 or later.
 
@@ -28,7 +28,7 @@ Token updates and rate limits are handled automatically.
 
 `/search/<search_term>` search by string (equals to `/?mode=search&search_string=<search_term>`)
 
-### Additional filters
+### Available filters
 
 `category` filter by category, specify multiple categories like this:  `44;45`
 
@@ -36,11 +36,15 @@ Token updates and rate limits are handled automatically.
 
 `sort` order by `seeders`, `leechers` (default: `last`)
 
-`min_seeders` and `min_leechers`
+`min_seeders` and `min_leechers` hide results with less activity
 
 `ranked=0` get non-scene releases
 
 All parameters can be mixed together and work with convenience methods.
+
+### Example
+
+`http://localhost:8080/imdb/tt2802850?category=41` will get you HD releases of Fargo
 
 ### Categories
 
