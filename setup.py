@@ -10,7 +10,8 @@ setup(
         'aiohttp',
         'python-dateutil',
         'humanize',
-        'jinja2'
+        'jinja2',
+        'click',
     ],
     entry_points={
         'console_scripts': [
