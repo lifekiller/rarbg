@@ -11,6 +11,7 @@ from aiohttp import get, web
 from dateutil import parser
 from humanize import naturalsize
 from jinja2 import Template
+from click import secho
 
 API_ENDPOINT = 'https://torrentapi.org/pubapi_v2.php'
 API_RATE_LIMIT = timedelta(seconds=2)
@@ -42,6 +43,7 @@ TEMPLATE = Template('''
 app = web.Application()
 app.token = None
 app.token_got = datetime.now()
+app.counter = 0
 
 
 class RateLimit:
@@ -54,7 +56,6 @@ class RateLimit:
         now = datetime.now()
         self.next_call = max(now, self.next_call) + self.rate_limit
         sleep = self.next_call - now - self.rate_limit
-        print('sleep', str(sleep))
         await asyncio.sleep(sleep.total_seconds())
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -64,6 +65,10 @@ class RateLimit:
 api_rate_limit = RateLimit(API_RATE_LIMIT)
 
 
+def pretty(data: dict):
+    return ', '.join(['='.join(pair) for pair in data.items()])
+
+
 async def update_token():
     token_expired = datetime.now() > app.token_got + TOKEN_LIFESPAN
     if not app.token or token_expired:
@@ -71,19 +76,23 @@ async def update_token():
         data = await resp.json()
         app.token = data['token']
         app.token_got = datetime.now()
+        secho('token refreshed - {}'.format(app.token), fg='yellow')
 
 
 async def api(params):
-    print('request', params)
-    await update_token()
-    params.update(token=app.token, format='json_extended')
+    app.counter += 1
+    request_id = app.counter
+    query_text = pretty(params)
+    secho('[{}] {}'.format(request_id, query_text), fg='cyan')
 
     async with api_rate_limit:
+        await update_token()
+        params.update(token=app.token, format='json_extended')
         resp = await get(API_ENDPOINT, params=params)
         data = await resp.json()
 
     if 'error' in data:
-        print('too many requests')
+        secho('[{}] {}'.format(request_id, data['error']), fg='red')
         return web.HTTPServiceUnavailable(text=data['error'])
 
     for i in data['torrent_results']:
@@ -93,7 +102,8 @@ async def api(params):
             hash=parse_qs(i['download'])['magnet:?xt'][0].split(':')[-1],
         )
 
-    print('response', params)
+    num_results = len(data['torrent_results'])
+    secho('[{}] {} results'.format(request_id, num_results), fg='green')
 
     result = TEMPLATE.render(title='rarbg', entries=data['torrent_results'])
     return web.Response(text=result)
@@ -119,9 +129,10 @@ app.router.add_route('GET', '/tvdb/{tvdb}', rarbg_rss)
 def main():
     loop = asyncio.get_event_loop()
     handler = app.make_handler()
-    f = loop.create_server(handler, '0.0.0.0', 8080)
+    f = loop.create_server(handler, '0.0.0.0', 4444)
     srv = loop.run_until_complete(f)
-    print('serving on', srv.sockets[0].getsockname())
+    loop.run_until_complete(update_token())
+    secho('serving on {}:{}'.format(*srv.sockets[0].getsockname()), fg='yellow')
     loop.run_forever()
 
 
