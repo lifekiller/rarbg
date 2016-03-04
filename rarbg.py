@@ -14,7 +14,7 @@ from jinja2 import Template
 from click import secho
 
 API_ENDPOINT = 'https://torrentapi.org/pubapi_v2.php'
-API_RATE_LIMIT = timedelta(seconds=2)
+API_RATE_LIMIT = 2  # seconds/request
 TOKEN_LIFESPAN = timedelta(minutes=15)
 
 TEMPLATE = Template('''
@@ -44,39 +44,21 @@ app = web.Application()
 app.token = None
 app.token_got = datetime.now()
 app.counter = 0
-
-
-class RateLimit:
-
-    def __init__(self, rate_limit):
-        self.rate_limit = rate_limit
-        self.next_call = datetime.now()
-
-    async def __aenter__(self):
-        now = datetime.now()
-        self.next_call = max(now, self.next_call) + self.rate_limit
-        sleep = self.next_call - now - self.rate_limit
-        await asyncio.sleep(sleep.total_seconds())
-
-    async def __aexit__(self, exc_type, exc, tb):
-        pass
-
-
-api_rate_limit = RateLimit(API_RATE_LIMIT)
+app.lock = asyncio.Lock()
 
 
 def pretty(data: dict):
     return ', '.join(['='.join(pair) for pair in data.items()])
 
 
-async def update_token():
+async def refresh_token():
     token_expired = datetime.now() > app.token_got + TOKEN_LIFESPAN
     if not app.token or token_expired:
         resp = await get(API_ENDPOINT, params={'get_token': 'get_token'})
         data = await resp.json()
         app.token = data['token']
         app.token_got = datetime.now()
-        secho('token refreshed - {}'.format(app.token), fg='yellow')
+        secho('refresh token - {}'.format(app.token), fg='yellow')
 
 
 async def api(params):
@@ -85,28 +67,30 @@ async def api(params):
     query_text = pretty(params)
     secho('[{}] {}'.format(request_id, query_text), fg='cyan')
 
-    await update_token()
+    await refresh_token()
 
-    async with api_rate_limit:
+    async with app.lock:
         params.update(token=app.token, format='json_extended')
         resp = await get(API_ENDPOINT, params=params)
-        data = await resp.json()
+        await asyncio.sleep(API_RATE_LIMIT)
 
-    if 'error' in data:
-        secho('[{}] {}'.format(request_id, data['error']), fg='red')
-        return web.HTTPServiceUnavailable(text=data['error'])
+    data = await resp.json()
+    error, results = data.get('error'), data.get('torrent_results')
 
-    for i in data['torrent_results']:
+    if error:
+        secho('[{}] {}'.format(request_id, error), fg='red')
+        return web.HTTPServiceUnavailable(text=error)
+
+    for i in results:
         i.update(
             pubdate=formatdate(parser.parse(i['pubdate']).timestamp()),
             hsize=naturalsize(i['size'], gnu=True),
             hash=parse_qs(i['download'])['magnet:?xt'][0].split(':')[-1],
         )
 
-    num_results = len(data['torrent_results'])
-    secho('[{}] {} results'.format(request_id, num_results), fg='green')
+    secho('[{}] {} results'.format(request_id, len(results)), fg='green')
 
-    result = TEMPLATE.render(title='rarbg', entries=data['torrent_results'])
+    result = TEMPLATE.render(title='rarbg', entries=results)
     return web.Response(text=result)
 
 
@@ -132,7 +116,7 @@ def main():
     handler = app.make_handler()
     f = loop.create_server(handler, '0.0.0.0', 4444)
     srv = loop.run_until_complete(f)
-    loop.run_until_complete(update_token())
+    asyncio.ensure_future(refresh_token())
     secho('serving on {}:{}'.format(*srv.sockets[0].getsockname()), fg='yellow')
     loop.run_forever()
 
