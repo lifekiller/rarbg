@@ -67,7 +67,8 @@ async def api(params):
     query_text = pretty(params)
     secho('[{}] {}'.format(request_id, query_text), fg='cyan')
 
-    await refresh_token()
+    async with app.lock:
+        await refresh_token()
 
     async with app.lock:
         params.update(token=app.token, format='json_extended')
@@ -116,7 +117,6 @@ def main():
     handler = app.make_handler()
     f = loop.create_server(handler, '0.0.0.0', 4444)
     srv = loop.run_until_complete(f)
-    asyncio.ensure_future(refresh_token())
     secho('serving on {}:{}'.format(*srv.sockets[0].getsockname()), fg='yellow')
     loop.run_forever()
 
