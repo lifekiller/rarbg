@@ -23,7 +23,7 @@ TEMPLATE = Template('''
     <channel>
         <title>{{title}}</title>
         <link>https://torrentapi.org/apidocs_v2.txt</link>
-        <ttl>3600</ttl>
+        <ttl>15</ttl>
         {% for entry in entries %}
         <item>
             <title>{{entry.title}} ({{entry.hsize}})</title>
@@ -85,8 +85,9 @@ async def api(params):
     query_text = pretty(params)
     secho('[{}] {}'.format(request_id, query_text), fg='cyan')
 
+    await update_token()
+
     async with api_rate_limit:
-        await update_token()
         params.update(token=app.token, format='json_extended')
         resp = await get(API_ENDPOINT, params=params)
         data = await resp.json()
